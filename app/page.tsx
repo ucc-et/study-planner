@@ -268,8 +268,9 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900">
+          <div className="flex flex-wrap gap-3 flex-col">
+            <div className="flex flex-wrap gap-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900">
               <span>Import Template</span>
               <input
                 className="hidden"
@@ -308,8 +309,11 @@ export default function Home() {
               Export Template
             </button>
 
+            </div>
+            
+
             {view === "fill" ? (
-              <>
+              <div className="flex flex-wrap gap-3">
                 <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900">
                   <span>Import Values</span>
                   <input
@@ -364,7 +368,7 @@ export default function Home() {
                 >
                   Export Values
                 </button>
-              </>
+              </div>
             ) : null}
           </div>
         </header>
