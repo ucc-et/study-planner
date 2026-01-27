@@ -32,10 +32,9 @@ export function PlannerHeader({
   return (
     <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="space-y-1">
-        <h1 className="text-3xl font-semibold tracking-tight">study-planner</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">SSP</h1>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Build sections → subsections → events, and enforce min/max credit
-          constraints.
+          For people who are sick of Tucan
         </p>
       </div>
 
