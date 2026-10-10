@@ -2,310 +2,227 @@
 
 import * as React from "react";
 
-import type {
-  FilledPlanBundleV1,
-  PlannerEvent,
-  PlannerTemplateV1,
-  SectionTemplate,
-  SubsectionTemplate,
-  ViewMode,
-} from "../../lib/planner/types";
-import {
-  defaultConstraints,
-  downloadJson,
-  makeId,
-  normalizeFilledValues,
-  normalizeTemplate,
-  sampleTemplate,
-  sumSectionCredits,
-} from "../../lib/planner/utils";
-import { PlannerHeader } from "./PlannerHeader";
-import { SectionCard } from "./SectionCard";
-import { SectionTotalsPanel } from "./SectionTotalsPanel";
-import { ViewToolbar } from "./ViewToolbar";
+import { isLegacyFile, parsePlanFile } from "../../lib/planner/storage";
+import { blankPlan, planFromTemplate, samplePlan } from "../../lib/planner/templates";
+import type { ModuleStatus, Plan, View } from "../../lib/planner/types";
+import { downloadJson, slugify, today } from "../../lib/planner/utils";
+import { AppHeader, ConfirmDialog, type ConfirmRequest, MobileNav, Toast, type ToastData, VIEWS } from "./AppChrome";
+import { type DialogState, ModuleDialog } from "./ModuleDialog";
+import { type AreaFilter, ModulesView } from "./ModulesView";
+import { Onboarding } from "./Onboarding";
+import { OverviewView } from "./OverviewView";
+import { SemesterView } from "./SemesterView";
+import { StructureView } from "./StructureView";
+import { usePlanner, useTheme } from "./usePlanner";
+
+function viewFromHash(): View {
+  const hash = window.location.hash.replace("#", "");
+  return VIEWS.find((v) => v.hash === hash)?.id ?? "overview";
+}
 
 export default function PlannerApp() {
-  const [view, setView] = React.useState<ViewMode>("template");
-  const [template, setTemplate] = React.useState<PlannerTemplateV1>(() =>
-    sampleTemplate(),
-  );
-  const [eventsBySubsectionId, setEventsBySubsectionId] = React.useState<
-    Record<string, PlannerEvent[]>
-  >({});
-  const [collapsedSectionIds, setCollapsedSectionIds] = React.useState<
-    Record<string, boolean>
-  >({});
-  const [importError, setImportError] = React.useState<string | null>(null);
-  const [valuesImportError, setValuesImportError] = React.useState<string | null>(
-    null,
+  const { plan, loaded, ...actions } = usePlanner();
+  const { theme, setTheme } = useTheme();
+  const [view, setView] = React.useState<View>("overview");
+  const [switching, setSwitching] = React.useState(false);
+  const [dialog, setDialog] = React.useState<DialogState>(null);
+  const [filter, setFilter] = React.useState<AreaFilter>(null);
+  const [toast, setToast] = React.useState<ToastData | null>(null);
+  const [confirm, setConfirm] = React.useState<ConfirmRequest | null>(null);
+  const fileInput = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    const sync = () => setView(viewFromHash());
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+
+  const navigate = React.useCallback((v: View) => {
+    const hash = VIEWS.find((x) => x.id === v)?.hash ?? "uebersicht";
+    if (window.location.hash !== `#${hash}`) window.location.hash = hash;
+    setView(v);
+    window.scrollTo({ top: 0 });
+  }, []);
+
+  const notify = React.useCallback((message: string, extra?: Partial<ToastData>) => setToast({ id: Date.now(), message, ...extra }), []);
+  const closeToast = React.useCallback(() => setToast(null), []);
+
+  const startPlan = (p: Plan, message: string) => {
+    actions.setPlan(p);
+    setSwitching(false);
+    setFilter(null);
+    navigate("overview");
+    notify(message);
+  };
+
+  const exportPlan = () => {
+    if (!plan) return;
+    downloadJson(`ssp-${slugify(`${plan.program.degree} ${plan.program.name}`)}-${today()}.json`, plan);
+    notify("Plan exportiert");
+  };
+
+  const exportTemplate = () => {
+    if (!plan) return;
+    downloadJson(`ssp-vorlage-${slugify(`${plan.program.degree} ${plan.program.name}`)}-${today()}.json`, { ...plan, modules: [] });
+    notify("Vorlage exportiert – ohne Module");
+  };
+
+  const importFile = async (file: File) => {
+    try {
+      const data = JSON.parse(await file.text()) as unknown;
+      const next = parsePlanFile(data);
+      const apply = () =>
+        startPlan(
+          next,
+          isLegacyFile(data)
+            ? `Alte Planer-Datei umgewandelt: ${next.areas.length} ${next.areas.length === 1 ? "Bereich" : "Bereiche"}, ${next.modules.length} ${next.modules.length === 1 ? "Modul" : "Module"}`
+            : `Plan importiert: ${next.modules.length} ${next.modules.length === 1 ? "Modul" : "Module"}`,
+        );
+      if (plan && plan.modules.length) {
+        setConfirm({
+          title: "Aktuellen Plan ersetzen?",
+          body: "Der importierte Plan ersetzt deinen aktuellen. Exportiere ihn vorher, wenn du ihn behalten möchtest.",
+          confirmLabel: "Ersetzen",
+          onConfirm: apply,
+        });
+      } else apply();
+    } catch {
+      notify("Datei konnte nicht gelesen werden – ist es eine SSP-Datei (.json)?", { tone: "error" });
+    }
+  };
+
+  const deleteModule = (id: string) => {
+    if (!plan) return;
+    const index = plan.modules.findIndex((m) => m.id === id);
+    const m = plan.modules[index];
+    if (!m) return;
+    actions.deleteModule(id);
+    setDialog(null);
+    notify(`„${m.title}“ gelöscht`, { action: { label: "Rückgängig", onClick: () => actions.restoreModule(m, index) } });
+  };
+
+  const setStatus = (id: string, status: ModuleStatus) => {
+    actions.updateModule(id, status === "passed" ? { status } : { status, grade: null });
+  };
+
+  const openAdd = (defaults: { areaId?: string; subAreaId?: string | null; semester?: number | null } = {}) => setDialog({ mode: "add", defaults });
+
+  const hiddenInput = (
+    <input
+      ref={fileInput}
+      type="file"
+      accept="application/json,.json"
+      className="hidden"
+      onChange={(e) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (file) void importFile(file);
+      }}
+    />
   );
 
-  const totalCredits = React.useMemo(() => {
-    return template.sections.reduce(
-      (acc, s) => acc + sumSectionCredits(s, eventsBySubsectionId),
-      0,
+  if (!loaded) {
+    return <div className="min-h-screen bg-canvas" aria-busy="true" />;
+  }
+
+  if (!plan || switching) {
+    return (
+      <>
+        <Onboarding
+          hasExistingPlan={!!plan && plan.modules.length > 0}
+          theme={theme}
+          onTheme={setTheme}
+          onCancel={plan ? () => setSwitching(false) : undefined}
+          onExportCurrent={plan ? exportPlan : undefined}
+          onChooseTemplate={(t, start) => startPlan(planFromTemplate(t, start), `${t.degree} ${t.name} angelegt – füge jetzt deine Module hinzu`)}
+          onBlank={(start) => {
+            startPlan(blankPlan(start), "Leere Vorlage angelegt – lege jetzt deine Bereiche an");
+            navigate("structure");
+          }}
+          onSample={() => startPlan(samplePlan(), "Beispielplan geladen")}
+          onImport={() => fileInput.current?.click()}
+        />
+        {hiddenInput}
+        <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
+        <Toast toast={toast} onClose={closeToast} />
+      </>
     );
-  }, [eventsBySubsectionId, template.sections]);
-
-  async function onImportTemplateFile(file: File) {
-    setImportError(null);
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text) as unknown;
-      const normalized = normalizeTemplate(parsed);
-      setTemplate(normalized);
-      setEventsBySubsectionId({});
-      setCollapsedSectionIds({});
-      setValuesImportError(null);
-    } catch {
-      setImportError("Could not import: invalid JSON/template.");
-    }
-  }
-
-  function onExportTemplate() {
-    const filename = `study-planner-template-${new Date()
-      .toISOString()
-      .slice(0, 10)}.json`;
-    downloadJson(filename, template);
-  }
-
-  async function onImportValuesFile(file: File) {
-    setValuesImportError(null);
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text) as unknown;
-      const parsedObj = (parsed ?? {}) as Record<string, unknown>;
-
-      // If the file bundles a template, load it first.
-      const bundledTemplateRaw = parsedObj.template as unknown;
-      if (bundledTemplateRaw != null) {
-        const nextTemplate = normalizeTemplate(bundledTemplateRaw);
-        setTemplate(nextTemplate);
-        setCollapsedSectionIds({});
-
-        const normalized = normalizeFilledValues(parsed, nextTemplate);
-        setEventsBySubsectionId(normalized.eventsBySubsectionId);
-      } else {
-        // Back-compat: values-only JSON
-        const normalized = normalizeFilledValues(parsed, template);
-        setEventsBySubsectionId(normalized.eventsBySubsectionId);
-      }
-    } catch {
-      setValuesImportError("Could not import values: invalid JSON.");
-    }
-  }
-
-  function onExportValues() {
-    const payload: FilledPlanBundleV1 = {
-      version: 1,
-      template,
-      eventsBySubsectionId,
-    };
-    const filename = `study-planner-plan-${new Date()
-      .toISOString()
-      .slice(0, 10)}.json`;
-    downloadJson(filename, payload);
-  }
-
-  function addSection() {
-    setTemplate((prev) => ({
-      ...prev,
-      sections: [
-        ...prev.sections,
-        {
-          id: makeId(),
-          title: `Section ${prev.sections.length + 1}`,
-          constraints: defaultConstraints(),
-          subsections: [],
-        },
-      ],
-    }));
-  }
-
-  function updateSection(sectionId: string, updater: (s: SectionTemplate) => SectionTemplate) {
-    setTemplate((prev) => ({
-      ...prev,
-      sections: prev.sections.map((s) => (s.id === sectionId ? updater(s) : s)),
-    }));
-  }
-
-  function removeSection(section: SectionTemplate) {
-    setTemplate((prev) => ({
-      ...prev,
-      sections: prev.sections.filter((s) => s.id !== section.id),
-    }));
-    setEventsBySubsectionId((prev) => {
-      const next = { ...prev };
-      for (const sub of section.subsections) delete next[sub.id];
-      return next;
-    });
-    setCollapsedSectionIds((prev) => {
-      const next = { ...prev };
-      delete next[section.id];
-      return next;
-    });
-  }
-
-  function addSubsection(sectionId: string) {
-    updateSection(sectionId, (s) => ({
-      ...s,
-      subsections: [
-        ...s.subsections,
-        {
-          id: makeId(),
-          title: `Subsection ${s.subsections.length + 1}`,
-          constraints: defaultConstraints(),
-        },
-      ],
-    }));
-  }
-
-  function updateSubsection(
-    sectionId: string,
-    subsectionId: string,
-    updater: (sub: SubsectionTemplate) => SubsectionTemplate,
-  ) {
-    updateSection(sectionId, (s) => ({
-      ...s,
-      subsections: s.subsections.map((sub) =>
-        sub.id === subsectionId ? updater(sub) : sub,
-      ),
-    }));
-  }
-
-  function removeSubsection(sectionId: string, subsectionId: string) {
-    updateSection(sectionId, (s) => ({
-      ...s,
-      subsections: s.subsections.filter((sub) => sub.id !== subsectionId),
-    }));
-    setEventsBySubsectionId((prev) => {
-      const next = { ...prev };
-      delete next[subsectionId];
-      return next;
-    });
-  }
-
-  function addEvent(subsectionId: string) {
-    setEventsBySubsectionId((prev) => {
-      const existing = prev[subsectionId] ?? [];
-      const nextEvent: PlannerEvent = {
-        id: makeId(),
-        title: `Event ${existing.length + 1}`,
-        credits: 0,
-        pending: true,
-      };
-      return { ...prev, [subsectionId]: [...existing, nextEvent] };
-    });
-  }
-
-  function updateEvent(subsectionId: string, eventId: string, nextEvent: PlannerEvent) {
-    setEventsBySubsectionId((prev) => {
-      const existing = prev[subsectionId] ?? [];
-      return {
-        ...prev,
-        [subsectionId]: existing.map((e) => (e.id === eventId ? nextEvent : e)),
-      };
-    });
-  }
-
-  function removeEvent(subsectionId: string, eventId: string) {
-    setEventsBySubsectionId((prev) => {
-      const existing = prev[subsectionId] ?? [];
-      return { ...prev, [subsectionId]: existing.filter((e) => e.id !== eventId) };
-    });
-  }
-
-  function toggleCollapsed(sectionId: string) {
-    setCollapsedSectionIds((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }));
-  }
-
-  function collapseAll() {
-    setCollapsedSectionIds((prev) => {
-      const next: Record<string, boolean> = { ...prev };
-      for (const s of template.sections) next[s.id] = true;
-      return next;
-    });
-  }
-
-  function expandAll() {
-    setCollapsedSectionIds({});
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 px-4 py-10 text-zinc-900 dark:bg-black dark:text-zinc-50">
-      <main className="mx-auto w-full max-w-5xl">
-        <PlannerHeader
-          view={view}
-          template={template}
-          eventsBySubsectionId={eventsBySubsectionId}
-          importError={importError}
-          valuesImportError={valuesImportError}
-          onImportTemplateFile={onImportTemplateFile}
-          onExportTemplate={onExportTemplate}
-          onImportValuesFile={onImportValuesFile}
-          onExportValues={onExportValues}
-        />
+    <div className="min-h-screen bg-canvas">
+      <AppHeader
+        plan={plan}
+        view={view}
+        theme={theme}
+        onTheme={setTheme}
+        onNavigate={navigate}
+        onSwitchProgram={() => setSwitching(true)}
+        onImport={() => fileInput.current?.click()}
+        onExport={exportPlan}
+        onAddModule={() => openAdd()}
+      />
+      {hiddenInput}
 
-        <ViewToolbar
-          view={view}
-          totalCredits={totalCredits}
-          onSetView={setView}
-          onAddSection={addSection}
-        />
-
-        {view === "fill" ? (
-          <SectionTotalsPanel
-            sections={template.sections}
-            eventsBySubsectionId={eventsBySubsectionId}
-            collapsedSectionIds={collapsedSectionIds}
-            onToggleCollapsed={toggleCollapsed}
-            onCollapseAll={collapseAll}
-            onExpandAll={expandAll}
+      <main className={view === "semester" ? "mx-auto max-w-[1440px] px-4 pb-28 pt-8 sm:px-6 md:pb-16" : "mx-auto max-w-[1248px] px-4 pb-28 pt-8 sm:px-6 md:pb-16"}>
+        {view === "overview" ? (
+          <OverviewView
+            plan={plan}
+            onOpenModules={(areaId) => {
+              setFilter(areaId ? { areaId, subAreaId: null } : null);
+              navigate("modules");
+            }}
+            onOpenSemester={() => navigate("semester")}
+            onOpenStructure={() => navigate("structure")}
+            onAddModule={openAdd}
+            onEditModule={(id) => setDialog({ mode: "edit", moduleId: id })}
           />
         ) : null}
-
-        <div className="space-y-6">
-          {template.sections.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-zinc-300 bg-white p-8 text-center text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-400">
-              No sections yet. Click “Add Section”.
-            </div>
-          ) : null}
-
-          {template.sections.map((section) => (
-            <SectionCard
-              key={section.id}
-              view={view}
-              section={section}
-              eventsBySubsectionId={eventsBySubsectionId}
-              isCollapsed={!!collapsedSectionIds[section.id]}
-              onToggleCollapse={() => toggleCollapsed(section.id)}
-              onUpdateTitle={(title) =>
-                updateSection(section.id, (s) => ({ ...s, title }))
-              }
-              onUpdateConstraints={(constraints) =>
-                updateSection(section.id, (s) => ({ ...s, constraints }))
-              }
-              onAddSubsection={() => addSubsection(section.id)}
-              onRemoveSection={() => removeSection(section)}
-              onUpdateSubsectionTitle={(subId, title) =>
-                updateSubsection(section.id, subId, (sub) => ({ ...sub, title }))
-              }
-              onUpdateSubsectionConstraints={(subId, constraints) =>
-                updateSubsection(section.id, subId, (sub) => ({
-                  ...sub,
-                  constraints,
-                }))
-              }
-              onRemoveSubsection={(subId) => removeSubsection(section.id, subId)}
-              onAddEvent={(subId) => addEvent(subId)}
-              onUpdateEvent={(subId, eventId, next) =>
-                updateEvent(subId, eventId, next)
-              }
-              onRemoveEvent={(subId, eventId) => removeEvent(subId, eventId)}
-            />
-          ))}
-        </div>
+        {view === "semester" ? (
+          <SemesterView
+            plan={plan}
+            onMove={actions.moveModule}
+            onEditModule={(id) => setDialog({ mode: "edit", moduleId: id })}
+            onAddModule={openAdd}
+            onSetStudyMode={(studyMode) => actions.updatePlan({ studyMode })}
+            onSetSemesterCount={(semesterCount) => actions.updatePlan({ semesterCount })}
+          />
+        ) : null}
+        {view === "modules" ? (
+          <ModulesView
+            plan={plan}
+            filter={filter}
+            onFilter={setFilter}
+            onEditModule={(id) => setDialog({ mode: "edit", moduleId: id })}
+            onAddModule={openAdd}
+            onDeleteModule={deleteModule}
+            onSetStatus={setStatus}
+          />
+        ) : null}
+        {view === "structure" ? <StructureView plan={plan} actions={actions} onConfirm={setConfirm} onExportTemplate={exportTemplate} /> : null}
       </main>
+
+      <MobileNav view={view} onNavigate={navigate} onAddModule={() => openAdd()} />
+
+      <ModuleDialog
+        plan={plan}
+        state={dialog}
+        onClose={() => setDialog(null)}
+        onDelete={deleteModule}
+        onSave={(draft, id) => {
+          if (id) {
+            actions.updateModule(id, draft);
+            notify("Modul gespeichert");
+          } else {
+            actions.addModule(draft);
+            notify(`„${draft.title}“ hinzugefügt`);
+          }
+          setDialog(null);
+        }}
+      />
+      <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
+      <Toast toast={toast} onClose={closeToast} />
     </div>
   );
 }
