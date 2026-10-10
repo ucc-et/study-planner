@@ -1,26 +1,128 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ---------------------------------------------------------------------------
+   Design tokens. The theme is set on <html data-theme="light|dark"> by an
+   inline script in layout.tsx (system preference or the user's choice).
+   --------------------------------------------------------------------------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --bg-canvas: #f4f5f7;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f0f1f4;
+  --bg-inverse: #16181d;
+  --fg: #16181d;
+  --fg-2: #5a5f6b;
+  --fg-3: #8b909a;
+  --fg-inverse: #ffffff;
+  --line: #e3e5e9;
+  --line-strong: #c9ccd3;
+  --success: #1e9254;
+  --warning: #b8650a;
+  --danger: #cc3535;
+  --info: #3b78d8;
+  --shadow-card: 0 1px 2px rgb(16 18 26 / 0.04), 0 4px 12px -2px rgb(16 18 26 / 0.05);
+  --shadow-overlay: 0 20px 48px -8px rgb(16 18 26 / 0.18), 0 2px 6px rgb(16 18 26 / 0.06);
+  --scrim: rgb(22 24 29 / 0.45);
+
+  /* Area colours follow the official TU study plans: blue Pflicht, green Wahl, pink Studium Generale, orange thesis. */
+  --area-blue: #3b78d8;
+  --area-green: #2a9a5a;
+  --area-pink: #c2479a;
+  --area-orange: #df7630;
+  --area-teal: #0f95a3;
+  --area-violet: #7657d6;
+  --area-amber: #c98a0b;
+  --area-slate: #64748b;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-canvas: #0d0e11;
+  --bg-surface: #16181d;
+  --bg-subtle: #1f2128;
+  --bg-inverse: #eceef1;
+  --fg: #eceef1;
+  --fg-2: #a3a8b2;
+  --fg-3: #6f7480;
+  --fg-inverse: #16181d;
+  --line: #2a2d35;
+  --line-strong: #3d414c;
+  --success: #3cc27c;
+  --warning: #f0a440;
+  --danger: #f26b6b;
+  --info: #6ea1f2;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-overlay: 0 24px 56px -8px rgb(0 0 0 / 0.6), 0 2px 8px rgb(0 0 0 / 0.4);
+  --scrim: rgb(0 0 0 / 0.6);
+
+  --area-blue: #5e95f2;
+  --area-green: #41bd75;
+  --area-pink: #e06cb9;
+  --area-orange: #f08b47;
+  --area-teal: #2db6c3;
+  --area-violet: #9c82f2;
+  --area-amber: #e3b13c;
+  --area-slate: #8d97aa;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-canvas: var(--bg-canvas);
+  --color-surface: var(--bg-surface);
+  --color-subtle: var(--bg-subtle);
+  --color-inverse: var(--bg-inverse);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-fg-inverse: var(--fg-inverse);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --shadow-card: var(--shadow-card);
+  --shadow-overlay: var(--shadow-overlay);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--bg-canvas);
+  color: var(--fg);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Small helpers that Tailwind utilities can't express nicely. */
+.caps {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
 }

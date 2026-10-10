@@ -13,9 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "study-planner",
-  description: "Plan sections, subsections, and credits.",
+  title: "SSP · Studienplaner",
+  description: "Behalte deine Credit Points im Blick – Bereiche, Module und Semester für dein Studium an der TU Darmstadt.",
 };
+
+// Runs before first paint so the page never flashes in the wrong theme.
+const themeScript = `(function(){try{var p=localStorage.getItem("ssp.theme");var d=p==="dark"||((!p||p==="system")&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light";}catch(e){}})();`;
 
 export default function RootLayout({
   children,
@@ -23,12 +26,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+    <html lang="de" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>{children}</body>
     </html>
   );
 }

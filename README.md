@@ -1,60 +1,47 @@
-# study-planner
+# study-planner (SSP)
 
-A small Next.js app for students who want a clearer overview of their semester credit counts.
+A small Next.js app for students of TU Darmstadt who want a clear overview of their credit points.
 
-If you’ve ever tried to keep track of modules/courses and credit requirements in TU Darmstadt’s TUCaN and thought “there must be a better way”… this is that better way.
+If you’ve ever tried to keep track of modules and credit requirements in TUCaN and thought “there must be a better way”… this is that better way.
 
-## What it does
+## How it models your studies
 
-The app models your study plan like this:
+Credit points at TU Darmstadt are awarded per **module**, so that's the only thing you fill in. Everything above it comes from your study regulation (Prüfungsordnung):
 
-- **Section** (e.g. “Core”, “Electives”)
-	- has a **title**
-	- has **credit constraints**: min/max credits required
-	- contains **Subsections**
-- **Subsection** (e.g. “Math”, “CS Basics”)
-	- has a **title**
-	- has **credit constraints**: min/max credits required
-	- contains an **EventList** (in Filling View)
-- **Event** (a course/module)
-	- **title**
-	- **credit points**
-	- can be marked **pending** (for courses you’re currently taking)
+- **Area** (Bereich, e.g. “Pflichtbereich”, “Wahlbereich”)
+	- has a colour and a **credit range** (e.g. 48–49 CP)
+	- can have **sub-areas** (one level max) for “davon” rules, e.g. “davon 9–18 CP Studienbegleitende Leistungen”
+- **Module**
+	- title, credit points, area (and optionally sub-area)
+	- semester (or none – then it sits on the *Merkzettel*)
+	- status: planned · running · passed · failed
+	- grade (optional, once passed)
 
-Constraints are validated live in Filling View so you immediately see what’s missing or what’s over the limit.
+Lectures, exercises and individual exams are intentionally not modelled – they don't change how credits are counted.
 
 ## Views
 
-### 1) Template Editor
+- **Onboarding** – pick your programme (B.Sc./M.Sc. Informatik PO 2023, B.Sc. Maschinenbau SE 2024), start from a blank structure, import a file or try the sample plan.
+- **Übersicht** – total progress, every area with its target range, open modules, estimated grade average, graduation forecast and next steps.
+- **Semesterplan** – modules per semester with drag & drop, collapsed past semesters, Merkzettel for ideas, full-/part-time load.
+- **Module** – all modules as a tree: area → sub-area → module, with filters and search.
+- **Struktur** – edit areas, sub-areas and credit ranges, with a plausibility check.
 
-The template editor is used to define the structure of your studies:
+Light and dark mode follow your system setting; the button in the header switches between system, light and dark.
 
-- Add/remove **Sections** and **Subsections**
-- Set credit constraints (min/max) for each Section/Subsection
-- No events here (by design)
+## Data, import & export
 
-### 2) Filling View
+Your plan is saved automatically in your browser (localStorage) – there's no account and nothing leaves your device.
 
-Use this to fill your template with real courses:
+- **Export** downloads the whole plan (structure + modules) as JSON.
+- **Import** reads those files – and files exported by the previous version of this planner, which are converted automatically (Section → area, Subsection → sub-area, Event → module).
+- **Vorlage exportieren** (in Struktur) exports only the structure, to share it with fellow students.
 
-- Add events under subsections
-- Enter credits + mark events as **pending**
-- See validation chips (OK / Constraint not met)
-- See a “Section totals” panel at the top
-- Collapse/expand sections to keep it readable
+The credit rules in the templates come from the official Studien- und Prüfungspläne (Satzungsbeilagen 2023_II, 2023_IV, 2024_VIII). Always double-check against the regulation that applies to you.
 
-## Import / Export
+## Design
 
-There are two different kinds of exports:
-
-- **Template**: exports only the structure (sections/subsections/constraints)
-- **Values**: exports a single “plan” file that includes both:
-	- the template, and
-	- the filled events (credits + pending)
-
-Tip: If you want to share your plan with someone, export **Values**.
-
-Because this application does not store any data, the export is a conveniant way for a user to adjust their own grades or study structure later on.
+The redesign was done in Figma first. `design/figma-plugin/` contains a local Figma plugin that generates the design file (concept, screens, components) – see its README.
 
 ## Run locally
 
